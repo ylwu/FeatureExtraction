@@ -122,5 +122,4 @@ def extractGenericCategoricalFeatures(new_project_ids=None, images=False, csv_ou
                                         iter_args,args,ncores)
 
     gc.collect()
-    conn.close()
     return csv_files

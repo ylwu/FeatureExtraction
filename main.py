@@ -1,29 +1,17 @@
-# from util.functions import forFileInDir, readLiteTable
-# from readDataDir_v2_3 import readChannelDict
 import json
 import os
 import multiprocessing as mp
 import subprocess
 import sys
 import ConfigParser
-# sys.path.insert(0,'/scratch')
-# from endtoend_jaguar.raw2db import files_2_tvv_db as r2db
 from db2features import main as db2features
-# from endtoend_jaguar.db2features import extract_features
 import time
-# import shutil
+import shutil
 import gc
+import csv
+import numpy as np
 
 #from endtoend_jaguar.raw2db import r2db_main
-
-#channel_meta_dict: {channel_id:[min,max,isCat]}
-
-def checkfilesindir():
-    path = "/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all/"
-    l = os.listdir(path)
-    for i in range(1,7082):
-        if 'signal_schema_' + str(i) + '.csv' not in l:
-            print i
 
 def isfloat(value):
   try:
@@ -67,18 +55,16 @@ def convert_csv_format(in_file_path,base_path):
 
         for row_line in all_rows:
             row = row_line.rstrip().split(",")
-            if int(row[0]) in text_channels:
-                continue
-            elif int(row[0]) in all_num_channels:
+            if row[0] in all_num_fields:
                 num_file.write("%s,%s,%s"%(timestamp_to_index[float(row[1])],row[0],float(row[2])))
                 num_file.write('\r\n')
                 num_field_ids.add(row[0])
-            elif row[0] in cat_channel_meta_dict:
+            elif row[0] in cat_fields_meta_dict:
                 cat_file.write("%s,%s,%d"%(timestamp_to_index[float(row[1])],row[0],int(float(row[2]))))
                 cat_file.write('\r\n')
                 cat_field_ids.add(row[0])
             else:
-                print "error, wrong id " + row[0]
+                continue
 
         cat_file.close()
         num_file.close()
@@ -147,18 +133,15 @@ def output_features_at_cutoffs(intermediate_path,final_file_path,cutoff_index_pa
         with open(final_file_path,'a') as newfile:
             newfile.write('\r\n'.join(lines))
 
-def convert_signal_to_features(signal_file_path):
+def convert_signal_to_features(signal_file_path,fid):
     
     print 'start converting', signal_file_path
 
-    intermediate_csv_path = 'intermediate/'
-    if not os.path.exists(intermediate_csv_path):
-        os.makedirs(intermediate_csv_path)
-    file_name = signal_file_path.split('/')[-1]
-    fid = file_name.split('.')[0].split('_')[-1]
+    if not os.path.exists(temp_csv_path):
+        os.makedirs(temp_csv_path)
 
     tic = time.time()
-    convert_csv_format(signal_file_path,intermediate_csv_path)
+    convert_csv_format(signal_file_path,intermediate_path)
     tic_2 = time.time()
     print 'conversion time: ' , tic_2 - tic
 
@@ -167,10 +150,10 @@ def convert_signal_to_features(signal_file_path):
     db2features.extractAllFeatures()
     tic_3 = time.time()
     print 'extraction time:', tic_3 - tic_2
-    output_features_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/features_all/intermediate/'
-    output_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/features_all/final_v2/'
-    mergeFiles(output_path,fid,output_features_path,feature_desc_map)
-    clearFolder(output_features_path)
+    
+    mergeFiles(output_path,fid,temp_csv_path,all_features_dict)
+    clearFolder(intermediate_path)
+    clearFolder(temp_csv_path)
 
 
 def matchCutoffs(indices, cutoffs):
@@ -201,9 +184,9 @@ def clearFolder(folder):
         except Exception, e:
             print e
 
-def mergeFiles(output_path,tid, intermediate_path,feature_desc_map):
+def mergeFiles(output_path,tid, temp_csv_path,all_features_dict):
     
-    base_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all_converted/'
+    base_path = 'intermediate/'
     with open(base_path + 'cat_field_ids',"rb") as f:
         cat_field_ids = json.load(f)
     with open(base_path + 'num_field_ids',"rb") as f:
@@ -211,8 +194,8 @@ def mergeFiles(output_path,tid, intermediate_path,feature_desc_map):
 
     all_field_ids = set(cat_field_ids+num_field_ids)
 
-    file_list = sorted(os.listdir(intermediate_path))
-    file_list_full_path = [intermediate_path + fn for fn in file_list]
+    file_list = sorted(os.listdir(temp_csv_path))
+    file_list_full_path = [temp_csv_path + fn for fn in file_list]
     with open(output_path+str(tid) + ".csv",'w') as writefile:
         for file_path in file_list_full_path:
             with open(file_path,'rb') as infile:
@@ -220,23 +203,94 @@ def mergeFiles(output_path,tid, intermediate_path,feature_desc_map):
                     row = row_line.rstrip().split(",")
                     cid = row[2].split('__')[0]
                     all_field_ids.discard(cid)
-                    writefile.write("%s,%s,%d"%(row[0],row[1],feature_desc_map[row[2]]))
+                    writefile.write("%s,%s,%d"%(row[0],row[1],all_features_dict[row[2]]))
                     writefile.write("\r\n")
     if len(all_field_ids) != 0:
         print tid, 'error: not all fields are transformed'
 
 def convert_all_signals(base_path):
     all_files = os.listdir(base_path)
-    for i in range(6958,7082):
-        f_name = 'signal_schema_' + str(i) + '.csv'
-        if f_name in all_files:
-            try:
-                convert_signal_to_features(base_path+f_name)
-            except Exception,e:
-                print e
-                print 'error in ==============', i
-                output_features_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/features_all/intermediate/'
-                clearFolder(output_features_path)
+    fid = 1
+    for fname in all_files:
+        try:
+            convert_signal_to_features(base_path+fname,fid)
+            fid += 1
+        except Exception,e:
+            print e
+            print 'error in ==============', i
+            clearFolder(intermediate_path)
+            clearFolder(temp_csv_path)
+
+def generate_all_features():
+    global all_features_dict, all_features
+
+    num_feature_suffix = ['absmeandiff',"absmaxdiff","maxdiff","mindiff","absmindiff","absmeandiffdiff","absmaxdiffdiff","absmindiffdiff"
+    ,"lastminusfirst","sum","sum_abs","mean","mean_abs","max","min","max_abs","min_abs","var"]
+    cat_feature_suffix = ["mode","jitter","stability"]
+
+    all_features = []
+    all_features_dict = {}
+    for i in range(len(fields_dict)):
+        if str(i) in all_num_fields: #this is a numerical feature
+            all_features.append(str(i))
+            all_features.extend(map(lambda x: str(i) + '__' + x,num_feature_suffix))
+        elif str(i) in cat_fields_meta_dict:
+            all_features.extend(map(lambda x: str(i) + '__' + x,cat_feature_suffix))
+            min_max = cat_fields_meta_dict[str(i)]
+            all_features.extend(map(lambda x: str(i) + '__percent__' + str(x),range(min_max[0],min_max[1]+1)))
+            all_features.extend(map(lambda x: str(i) + '__total__' + str(x),range(min_max[0],min_max[1]+1)))
+    
+    for i in range(len(all_features)):
+        all_features_dict[all_features[i]] = i
+    with open(metadata_output_path + 'all_features_list.json', 'w') as outfile:
+        json.dump(all_features, outfile)
+    with open(metadata_output_path + 'all_features_dict.json', 'w') as outfile:
+        json.dump(all_features_dict, outfile)
+    
+    return len(all_features)
+
+def build_feature_matrix(tid,feature_matrix,has_feature_matrix): #tid is one off from file name
+    global row_id
+    filename = output_path + str(tid+1) + '.csv'
+    if not os.path.isfile(filename):
+        return
+    with open(filename,'rb') as csvfile:
+        all_rows = csvfile.readlines()
+    for i,row_line in enumerate(all_rows):
+        row = row_line.rstrip().split(",")
+        time_index = int(float(row[0]))
+        feature_index = int(float(row[2]))
+        if not (np.isinf(np.float16(float(row[1]))) or np.isnan(np.float16(float(row[1])))):
+            feature_matrix[row_id,(time_index-1) * feature_num + feature_index] = np.float16(float(row[1]))
+            has_feature_matrix[row_id,feature_index] = 1
+    row_id += 1
+
+def write_matrix_to_file():
+    num_entities = len(os.listdir(output_path))
+
+    feature_matrix = np.zeros([num_entities,feature_num * 10],dtype=np.float16)
+    has_feature_matrix = np.zeros([num_entities,feature_num],dtype=np.int8)
+    global row_id
+    row_id = 0
+    for tid in range(num_entities):
+        print tid
+        build_feature_matrix(tid,feature_matrix,has_feature_matrix)
+    print 'rows', row_id
+    feature_matrix = feature_matrix[:row_id,:]
+    has_feature_matrix = has_feature_matrix[:row_id,:]
+    np.savetxt(feature_matrix_path+'feature_matrix.csv',feature_matrix,fmt='%.10g')
+    np.savetxt(feature_matrix_path+'has_feature_matrix.csv',has_feature_matrix,fmt='%.3g')
+
+def make_dirs(dirs):
+    for directory in dirs:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+def revert_dict(d):
+    new_d = {}
+    for key in d:
+        new_d[d[key]] = key
+    return new_d
 
 if __name__ == "__main__":
     config = ConfigParser.RawConfigParser()
@@ -244,20 +298,36 @@ if __name__ == "__main__":
 
     data_base_path = config.get('Data','data_base_path')
     metadata_base_path = config.get('Data','metadata_base_path')
+    metadata_output_path = config.get('Data', 'metadata_output_path')
+    feature_matrix_path = config.get('Data', 'feature_matrix_path')
 
-    with open(metadata_base_path + 'all_cat_fields_min_max_dict','r') as in_file:
-        cat_channel_meta_dict = json.load(in_file)
-    with open(metadata_base_path + 'all_text_fields', 'r') as outfile:
-        text_channels = set(json.load(outfile))
-    with open(metadata_base_path + 'all_num_fields', 'r') as outfile2:
-        all_num_channels = set(json.load(outfile2))
-    with open(metadata_base_path + 'all_features_dict.json', 'rb') as infile:
-        feature_desc_map = json.load(infile)
+    #directorys to store intermediate results
+    intermediate_path = 'intermediate/'
+    temp_csv_path = 'intermediate/temp_csvs/'
+    output_path = 'output/'
 
-    #convert_signal_to_features(OLD_DATA_FILES_DIRECTORY + "signal_schema_5417.csv")
-    convert_signal_to_features(data_base_path + "signal_schema_27.csv")
-    #convert_signal_to_features(OLD_DATA_FILES_DIRECTORY + "signal_schema_2.csv")
-    #convert_all_signals(OLD_DATA_FILES_DIRECTORY)
+    make_dirs([intermediate_path,temp_csv_path,output_path,metadata_output_path,feature_matrix_path])
+
+    with open(metadata_base_path + 'all_cat_fields_min_max_dict.json','r') as in_file:
+        cat_fields_meta_dict = json.load(in_file)
+    with open(metadata_base_path + 'all_num_fields.json', 'r') as outfile2:
+        all_num_fields = set(json.load(outfile2))
+    with open(metadata_base_path + 'fields_dict.json', 'r') as infile:
+        fields_dict = json.load(infile)
+
+    reverse_fields_dict = revert_dict(fields_dict)
+    with open(metadata_output_path + 'fields_reverse_dict.json', 'w') as outfile:
+        json.dump(reverse_fields_dict,outfile)
+
+    shutil.copy(metadata_base_path + 'all_cat_fields_min_max_dict.json',metadata_output_path)
+    shutil.copy(metadata_base_path + 'all_num_fields.json',metadata_output_path)
+    shutil.copy(metadata_base_path + 'fields_dict.json',metadata_output_path)
+
+
+    feature_num = generate_all_features()
+    convert_all_signals(data_base_path)
+    write_matrix_to_file()
+    clearFolder(output_path)
     
 
 

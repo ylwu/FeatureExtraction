@@ -55,8 +55,6 @@ def extractVariablesAndInsertChunk(field_ids, extractionFunc, insertionFunc, tab
                             metadata, csv_output_dir,cutoffs,csv_path):
     #works for all categorical and numeric
 
-    print 'read', csv_path
-
     if csv_path == 'intermediate/num_signals.csv':
         raw_df = pd.read_csv(csv_path, names=['date_index','channel_id','value'],dtype = {'date_index':np.int64, 'channel_id':np.int32, 'value': np.float64},error_bad_lines = False)
     else:
@@ -72,7 +70,6 @@ def extractVariablesAndInsertChunk(field_ids, extractionFunc, insertionFunc, tab
     #print "EXTRACTING FIELD_IDS:", field_ids
     for i,field_id in enumerate(field_ids):
         t0 = time.time()
-        print extractionFunc
         df = extractionFunc(raw_df, field_id,table=table, project_ids=project_ids)
         if df.empty:
             continue
