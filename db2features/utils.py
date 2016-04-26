@@ -2,9 +2,7 @@ import os,sys
 import datetime
 import time
 import numpy as np
-import xlrd
 import re
-import dill as pickle
 import multiprocessing as mp
 import csv
 import random

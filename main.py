@@ -164,7 +164,7 @@ def convert_signal_to_features(signal_file_path):
 
     print 'extracting features', signal_file_path
 
-    db2features.extractFeatures()
+    db2features.extractAllFeatures()
     tic_3 = time.time()
     print 'extraction time:', tic_3 - tic_2
     output_features_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/features_all/intermediate/'

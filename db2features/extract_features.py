@@ -12,26 +12,14 @@ import csv
 import logging
 import json
 import gc
+import utils
 
 def extractGenericNumericalFeatures(new_project_ids=None, images=False, csv_output_dir=None):
-    conn = sql.openSQLConnectionP(global_vars.DATABASE_NEW, global_vars.USERNAME, global_vars.PASSWORD, global_vars.HOST, global_vars.PORT)
     #for images, only extract 3 versions of the features, early, mid and late which
     #will eventually correspond to different sized images
     #for non-images, extract versions of features for every cutoff date
     print 'extractGenericNumericalFeatures'
-    if images:
-        print "calculating cutoffs"
-        earlyProjectCutoffs = efs.calculateCutoffDates(conn, 0.1,with_planned_end_dates=True)
-        midProjectCutoffs = efs.calculateCutoffDates(conn, 0.5,with_planned_end_dates=True)
-        lateProjectCutoffs = efs.calculateCutoffDates(conn, 0.75,with_planned_end_dates=True)
-        cutoffs = [earlyProjectCutoffs, midProjectCutoffs, lateProjectCutoffs]
-        #image: variables to be extracted by project_id
-        project_ids = set(earlyProjectCutoffs.keys())
-        [project_ids.add(pid) for pid in midProjectCutoffs]
-        [project_ids.add(pid) for pid in lateProjectCutoffs]
-        project_ids = list(project_ids)
-    else:
-        cutoffs = None
+    cutoffs = None
 
 
     have_features = True #if we're passed new_project_ids, we assume we have all the features already,
@@ -40,19 +28,17 @@ def extractGenericNumericalFeatures(new_project_ids=None, images=False, csv_outp
         have_features = False
 
 
-    field_ids = efs.fieldIDsOfType(conn,'num')
-    #field_ids = efs.fieldIDsOfType(conn,'int')
-    #field_ids.extend(efs.fieldIDsOfType(conn, 'float'))
+    field_ids = efs.fieldIDsOfType('num')
 
     print 'numeical field ids',len(field_ids)
 
     if len(field_ids) == 0:
         return []
 
-    with open('/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all_converted/' + 'cutoffs.json', 'rb') as outfile2:
+    with open('intermediate/cutoffs.json', 'rb') as outfile2:
         cutoffs = json.load(outfile2)
 
-    csv_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all_converted/num_signals.csv'
+    csv_path = 'intermediate/num_signals.csv'
     file_size = os.path.getsize(csv_path)
 
     if file_size > 1000:
@@ -64,7 +50,7 @@ def extractGenericNumericalFeatures(new_project_ids=None, images=False, csv_outp
     chunk_size = len(field_ids)/ncores
     chunks = field_ids
     chunkExtractionFunc =  efs.extractVariablesAndInsertChunk
-    csv_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all_converted/num_signals.csv'
+    csv_path = 'intermediate/num_signals.csv'
     args = [efs.extractSimpleNumVariableToDF,
             efs.numFeatureInsert,
             'time_varying_values',
@@ -82,12 +68,10 @@ def extractGenericNumericalFeatures(new_project_ids=None, images=False, csv_outp
 
     outputs = utils.runFunctionInParallel(chunkExtractionFunc,iter_args, args,ncores)
 
-    conn.close()
     return outputs
 
 def extractGenericCategoricalFeatures(new_project_ids=None, images=False, csv_output_dir=None):
     print 'start extractGenericCategoricalFeatures ============================='
-    conn = sql.openSQLConnectionP(global_vars.DATABASE_NEW, global_vars.USERNAME, global_vars.PASSWORD, global_vars.HOST, global_vars.PORT)
 
     #only need pickle file if we're generating all features
     #for specific project_ids we re-extract every time
@@ -97,18 +81,17 @@ def extractGenericCategoricalFeatures(new_project_ids=None, images=False, csv_ou
         have_features = False
 
     print 'extract cat field ids'
-    cat_field_ids = efs.fieldIDsOfType(conn,'cat')
-    #cat_field_ids = efs.fieldIDsOfType(conn,'categorical')
+    cat_field_ids = efs.fieldIDsOfType('cat')
 
     print 'cat field_ids ', len(cat_field_ids)
 
     if len(cat_field_ids) == 0:
         return []
 
-    with open('/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all_converted/' + 'cutoffs.json', 'rb') as outfile2:
+    with open('intermediate/cutoffs.json', 'rb') as outfile2:
         cutoffs = json.load(outfile2)
 
-    csv_path = '/media/ylwu/DATA/alfad7/alfa/data/JLR/signal_all_converted/cat_signals.csv'
+    csv_path = 'intermediate/cat_signals.csv'
     file_size = os.path.getsize(csv_path)
 
     if file_size > 1000:
